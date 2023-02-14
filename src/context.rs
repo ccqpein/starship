@@ -11,6 +11,7 @@ use git_repository::{
     sec::{self as git_sec, trust::DefaultForLevel},
     state as git_state, Repository, ThreadSafeRepository,
 };
+use log::debug;
 use once_cell::sync::OnceCell;
 #[cfg(test)]
 use std::collections::HashMap;
@@ -49,7 +50,7 @@ pub struct Context<'a> {
     pub properties: Properties,
 
     /// Private field to store Git information for modules who need it
-    repo: OnceCell<Repo>,
+    pub repo: OnceCell<Repo>,
 
     /// The shell the user is assumed to be running
     pub shell: Shell,
@@ -146,11 +147,12 @@ impl<'a> Context<'a> {
         let current_dir = dunce::canonicalize(&current_dir).unwrap_or(current_dir);
         let logical_dir = logical_path;
 
+        log::debug!("config map: {:?}", config.config);
         let root_config = config
             .config
             .as_ref()
             .map_or_else(StarshipRootConfig::default, StarshipRootConfig::load);
-
+        log::debug!("{:?}", root_config);
         let width = properties.terminal_width;
 
         Context {
@@ -308,6 +310,14 @@ impl<'a> Context<'a> {
                     remote,
                 })
             })
+    }
+
+    /// set the repo in context
+    pub fn set_repo(&self, repo: Repo) -> Result<(), Repo> {
+        match self.repo.set(repo) {
+            Ok(_) => Ok(()),
+            Err(r) => Err(r),
+        }
     }
 
     pub fn dir_contents(&self) -> Result<&DirContents, std::io::Error> {
@@ -530,6 +540,7 @@ impl DirContents {
     }
 }
 
+#[derive(Debug)]
 pub struct Repo {
     pub repo: ThreadSafeRepository,
 
@@ -559,6 +570,7 @@ impl Repo {
 }
 
 /// Remote repository
+#[derive(Debug)]
 pub struct Remote {
     pub branch: Option<String>,
     pub name: Option<String>,

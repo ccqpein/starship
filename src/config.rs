@@ -147,6 +147,7 @@ impl StarshipConfig {
 
     /// Create a config from a starship configuration file
     fn config_from_file() -> Option<toml::Table> {
+        //return None;
         let file_path = get_config_path()?;
 
         let toml_content = match utils::read_file(file_path) {

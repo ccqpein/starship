@@ -1,4 +1,4 @@
-use crate::context::{Context, Shell, Target};
+use crate::context::{Context, Repo, Shell, Target};
 use crate::logger::StarshipLogger;
 use crate::{
     config::{ModuleConfig, StarshipConfig},
@@ -62,7 +62,16 @@ impl<'a> ModuleRenderer<'a> {
 
         let context = default_context();
 
+        log::debug!("root_config: {:?}", context.root_config);
         Self { name, context }
+    }
+
+    /// Create a new `ModuleRenderer` with default root config
+    pub fn new_clean_module(name: &'a str) -> Self {
+        let mut result = Self::new(name);
+        result.context.root_config = StarshipRootConfig::default();
+        log::debug!("root_config in clean: {:?}", result.context.root_config);
+        result
     }
 
     pub fn path<T>(mut self, path: T) -> Self
@@ -162,6 +171,11 @@ impl<'a> ModuleRenderer<'a> {
         // the case (to get durations for all modules). So here we make it so, that an empty
         // module returns None in the tests...
         ret.filter(|s| !s.is_empty())
+    }
+
+    pub fn set_repo(mut self, repo: Repo) -> Self {
+        self.context.set_repo(repo);
+        self
     }
 }
 

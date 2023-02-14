@@ -57,6 +57,9 @@ pub fn module<'a>(context: &'a Context) -> Option<Module<'a>> {
     } else {
         None
     };
+
+    log::debug!("Repo dir: {:?}", &repo.as_ref().unwrap().repo);
+
     let dir_string = if config.truncate_to_repo {
         repo.and_then(|r| r.workdir.as_ref())
             .filter(|&root| root != &home_dir)
@@ -64,17 +67,22 @@ pub fn module<'a>(context: &'a Context) -> Option<Module<'a>> {
     } else {
         None
     };
+    log::debug!("dir_string 0: {:?}", &dir_string);
 
     let mut is_truncated = dir_string.is_some();
 
     // the home directory if required.
-    let dir_string = dir_string
-        .unwrap_or_else(|| contract_path(display_dir, &home_dir, &home_symbol).to_string());
+    //:= Step 1 move out this code
+    let dir_string =
+        dir_string.unwrap_or_else(|| contract_path(display_dir, &home_dir, &"~").to_string());
+
+    log::debug!("dir_string 1: {:?}", &dir_string);
 
     #[cfg(windows)]
     let dir_string = remove_extended_path_prefix(dir_string);
 
     // Apply path substitutions
+    //:= Step 2: substitute at the last
     let dir_string = substitute_path(dir_string, &config.substitutions);
 
     // Truncate the dir string to the maximum number of path components
@@ -85,6 +93,8 @@ pub fn module<'a>(context: &'a Context) -> Option<Module<'a>> {
         } else {
             dir_string
         };
+
+    log::debug!("dir_string 2: {:?}", &dir_string);
 
     let prefix = if is_truncated {
         // Substitutions could have changed the prefix, so don't allow them and
@@ -111,11 +121,14 @@ pub fn module<'a>(context: &'a Context) -> Option<Module<'a>> {
             let after_repo_root = contracted_path.replacen(repo_path_vec[0], "", 1);
             let num_segments_after_root = after_repo_root.split('/').count();
 
+            println!("contracted_path: {contracted_path}, \ndir_string: {dir_string}, \nrepo_path_vec: {:?}, \nnum_segments_after_root: {num_segments_after_root}",repo_path_vec);
+
             if config.truncation_length == 0
                 || ((num_segments_after_root - 1) as i64) < config.truncation_length
             {
                 let root = repo_path_vec[0];
                 let before = before_root_dir(&dir_string, &contracted_path);
+                println!("prefix: {prefix}, before: {before}");
                 [prefix + before.as_str(), root.to_string(), after_repo_root]
             } else {
                 [String::new(), String::new(), prefix + dir_string.as_str()]
@@ -129,6 +142,8 @@ pub fn module<'a>(context: &'a Context) -> Option<Module<'a>> {
     } else {
         path_vec
     };
+
+    println!("path_vec: {:?}", path_vec);
 
     let lock_symbol = String::from(config.read_only);
     let display_format = if path_vec[0].is_empty() && path_vec[1].is_empty() {
@@ -165,13 +180,19 @@ pub fn module<'a>(context: &'a Context) -> Option<Module<'a>> {
     });
 
     module.set_segments(match parsed {
-        Ok(segments) => segments,
+        Ok(segments) => {
+            segments
+                .iter()
+                .for_each(|s| println!("segments: {}", s.value()));
+            segments
+        }
         Err(error) => {
             log::warn!("Error in module `directory`:\n{}", error);
             return None;
         }
     });
 
+    println!("ansi string: {:?}", module.ansi_strings());
     Some(module)
 }
 
@@ -356,6 +377,7 @@ fn before_root_dir(path: &str, repo: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::context::Repo;
     use crate::test::ModuleRenderer;
     use crate::utils::create_command;
     use crate::utils::home_dir;
@@ -692,6 +714,40 @@ mod tests {
             Color::Cyan
                 .bold()
                 .paint(convert_path_sep(&format!("/foo/bar/{strange_sub}/path")))
+        ));
+
+        assert_eq!(expected, actual);
+    }
+
+    #[test]
+    fn issue_4869() {
+        let moduleR = ModuleRenderer::new("directory")
+            .path("~/code/forks/git_repo/src/lib")
+            .config(toml::toml! {
+                [directory]
+                truncation_length = 0
+                truncate_to_repo = false
+                repo_root_style = "underline bold cyan"
+                home_symbol = "H"
+                [directory.substitutions]
+                "~/code" = "{}"
+                "/" = " > "
+            })
+            .set_repo(Repo {
+                workdir: "~/code/forks/git_repo",
+                branch: None,
+                path: "~/code/forks/git_repo/src/lib",
+                state: None,
+                remote: None,
+            });
+
+        let actual = moduleR.collect();
+
+        let expected = Some(format!(
+            "{} ",
+            Color::Cyan
+                .bold()
+                .paint(convert_path_sep("{} > forks > git_repo > src > lib"))
         ));
 
         assert_eq!(expected, actual);
